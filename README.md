@@ -1,0 +1,83 @@
+# Barc
+
+Barc is a native macOS web browser built with SwiftUI and WebKit. It uses a vertical sidebar with spaces, a command bar, per-space themes, and runs Chrome Web Store extensions on WebKit's built-in Web Extensions engine.
+
+## Features
+
+- **Sidebar tabs.** Each space has favorites, pinned tabs, folders, and a "Today" list for short-lived tabs that you can clear in one go.
+- **Spaces.** Every space has its own name, icon, and theme. A space can share browsing data with the others or keep its own cookies and storage.
+- **Command bar.** Open a URL, search, or jump to a tab or history entry from one field (`⌘T` / `⌘L`).
+- **Themes.** Per-space gradient themes with color harmonies, presets, grain, and light/dark/auto modes.
+- **Chrome extensions.** Install from the Chrome Web Store (the store's button turns into "Add to Barc"), paste a store link or ID, or load an unpacked folder, `.zip`, or `.crx`. You can pin extension buttons to the top bar, open their popups, and manage them in Settings → Extensions.
+- **Everyday browser features.** Downloads, find in page, zoom, a share sheet, reopening closed tabs, and making Barc your default browser.
+
+## Chrome extension compatibility
+
+Barc loads extensions with `WKWebExtensionController`, so Manifest V3 extensions run the same way they do in Safari. Some Chrome-only behavior is missing in WebKit, so Barc patches each extension when it is installed or loaded:
+
+- It fills in Chrome APIs that WebKit doesn't have (`offscreen`, `sidePanel`, `tabGroups`, `storage.managed`, parts of `runtime` and `action`) with harmless stubs, so background scripts don't crash on startup.
+- It adds `requestIdleCallback` / `cancelIdleCallback` to every script file. WebKit doesn't have them, and extensions such as Proton Pass, Grammarly, and Bitwarden call them from their content scripts.
+- It keeps `chrome` and `browser` pointing at the same API in content scripts, and fills in `sender.frameId` for messages.
+- It fires `runtime.onInstalled` when WebKit doesn't.
+- It reports tab loading state, so `tabs.onUpdated` delivers `status: "complete"`.
+
+Checked to load and inject into pages: Proton Pass, Dark Reader, Grammarly, and Video Speed Controller. uBlock Origin Lite loads without errors. Bitwarden's background script currently fails because it doesn't recognize Barc's browser type.
+
+## Requirements
+
+- macOS 15.4 or later (WebKit Web Extensions API)
+- Xcode 16 or a Swift 5.10+ toolchain
+
+## Build and run
+
+```sh
+./build.sh
+```
+
+This builds a release binary, generates the app icon, assembles and ad-hoc signs `dist/Barc.app`, and installs it to `/Applications/Barc.app`. Set `INSTALL=0` to skip the install, or `CONFIG=debug` for a debug build.
+
+For development:
+
+```sh
+swift build
+swift test
+```
+
+Set `BARC_DATA_DIR=/some/folder` to run with a separate profile (library, history, and extensions) instead of `~/Library/Application Support/Barc`.
+
+## Keyboard shortcuts
+
+| Action | Shortcut |
+| --- | --- |
+| New tab / open location | `⌘T` / `⌘L` |
+| Close tab / reopen closed tab | `⌘W` / `⇧⌘T` |
+| Show or hide sidebar | `⌘S` |
+| Pin tab / add to favorites | `⌘D` / `⇧⌘D` |
+| Next / previous tab | `⌃Tab` / `⌃⇧Tab`, `⌥⌘↓` / `⌥⌘↑` |
+| Go to tab 1–9 | `⌘1` … `⌘9` |
+| Next / previous space | `⌥⌘→` / `⌥⌘←` |
+| Go to space | `⌃1` … `⌃9` |
+| New space / new folder | `⇧⌘N` / `⌥⌘N` |
+| Clear Today | `⇧⌘K` |
+| Edit theme | `⇧⌘E` |
+| Find in page | `⌘F` |
+| Copy URL | `⇧⌘C` |
+| Reload / zoom | `⌘R` / `⌘+` `⌘-` `⌘0` |
+| Back / forward | `⌘[` / `⌘]` |
+
+## Project layout
+
+```
+Sources/Barc/
+  BarcApp.swift         App entry point, menus, and shortcuts
+  BrowserStore.swift    Library, spaces, tabs, history, persistence
+  BrowserView.swift     Main window and top bar
+  Sidebar.swift         Sidebar, favorites, pinned tabs, folders
+  CommandBar.swift      URL and search command bar
+  TabSession.swift      WKWebView lifecycle per tab
+  Extensions.swift      Extension install, Chrome compatibility, popups, settings
+  Theme*.swift          Space themes and the theme editor
+  Services.swift        Favicons and downloads
+Tests/BarcTests/        Unit tests and WebKit extension injection tests
+scripts/make-icon.swift App icon generator
+```
