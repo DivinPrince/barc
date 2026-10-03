@@ -60,6 +60,7 @@ struct BrowserCommands: Commands {
                 .keyboardShortcut("n", modifiers: [.command, .shift])
             Button("New Folder") { store.newFolder() }
                 .keyboardShortcut("n", modifiers: [.command, .option])
+            Button("New Live Folder…") { store.beginCreatingLiveFolder() }
             Divider()
             Button("Close Tab") { store.closeSelected() }
                 .keyboardShortcut("w")

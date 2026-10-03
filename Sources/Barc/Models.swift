@@ -19,6 +19,7 @@ struct Folder: Codable, Identifiable, Equatable {
     var name: String
     var isExpanded = true
     var tabs: [UUID] = []
+    var live: LiveFeed?
 }
 
 enum PinnedItem: Codable, Identifiable, Equatable {
