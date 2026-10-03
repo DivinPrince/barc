@@ -104,7 +104,7 @@ struct ThemePad: View {
                     while x < canvasSize.width {
                         let dx = x - center.x, dy = y - center.y
                         let r = min(1, sqrt(dx * dx + dy * dy) / radius)
-                        let angle = (atan2(dy, dx) * 180 / .pi).wrappedDegrees
+                        let angle = angleDegrees(dy: dy, dx: dx).wrappedDegrees
                         let dotSize: CGFloat = 2.2 + r * 1.2
                         context.fill(
                             Path(ellipseIn: CGRect(x: x - dotSize / 2, y: y - dotSize / 2, width: dotSize, height: dotSize)),
@@ -181,7 +181,7 @@ struct ThemePad: View {
 
     private func dotFor(location: CGPoint, center: CGPoint, radius: CGFloat) -> ThemeDot {
         let dx = location.x - center.x, dy = location.y - center.y
-        return ThemeDot(angle: (atan2(dy, dx) * 180 / .pi).wrappedDegrees, radius: min(1, sqrt(dx * dx + dy * dy) / radius))
+        return ThemeDot(angle: angleDegrees(dy: dy, dx: dx).wrappedDegrees, radius: min(1, sqrt(dx * dx + dy * dy) / radius))
     }
 }
 
@@ -309,51 +309,85 @@ struct GrainDial: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let size = min(proxy.size.width, proxy.size.height)
-            let center = CGPoint(x: size / 2, y: size / 2)
-            let ring = size / 2 - 3
-            ZStack {
-                ForEach(0..<steps, id: \.self) { step in
-                    let fraction = Double(step) / Double(steps)
-                    let radians = (fraction * 360 - 90) * .pi / 180
-                    Circle()
-                        .fill(fraction <= value && value > 0 ? AnyShapeStyle(accent) : AnyShapeStyle(.primary.opacity(0.2)))
-                        .frame(width: 3.5, height: 3.5)
-                        .position(x: center.x + cos(radians) * ring, y: center.y + sin(radians) * ring)
-                }
-                Circle()
-                    .fill(.background)
-                    .overlay {
-                        Image(nsImage: NoiseTexture.image)
-                            .resizable(resizingMode: .tile)
-                            .opacity(0.25 + value * 0.75)
-                            .clipShape(Circle())
-                    }
-                    .overlay(Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
-                    .frame(width: size - 16, height: size - 16)
-                    .position(center)
-                let knob = (value * 360 - 90) * .pi / 180
-                Capsule()
-                    .fill(.primary.opacity(0.7))
-                    .frame(width: 2.5, height: 7)
-                    .rotationEffect(.radians(knob + .pi / 2))
-                    .position(x: center.x + cos(knob) * (size / 2 - 14), y: center.y + sin(knob) * (size / 2 - 14))
-            }
-            .contentShape(Circle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { drag in
-                        var degrees = atan2(drag.location.y - center.y, drag.location.x - center.x) * 180 / .pi + 90
-                        if degrees < 0 { degrees += 360 }
-                        var snapped = (degrees / 360 * Double(steps)).rounded() / Double(steps)
-                        if snapped >= 1 { snapped = 0 }
-                        if snapped != value {
-                            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-                            onChange(snapped)
-                        }
-                    }
-            )
+            dial(size: min(proxy.size.width, proxy.size.height))
         }
     }
+
+    private func dial(size: CGFloat) -> some View {
+        let center = CGPoint(x: size / 2, y: size / 2)
+        let ring = size / 2 - 3
+        return ZStack {
+            ticks(center: center, ring: ring)
+            face(size: size, center: center)
+            knob(size: size, center: center)
+        }
+        .contentShape(Circle())
+        .gesture(dragGesture(center: center))
+    }
+
+    private func ticks(center: CGPoint, ring: CGFloat) -> some View {
+        ForEach(0..<steps, id: \.self) { step in
+            tickMark(step: step, center: center, ring: ring)
+        }
+    }
+
+    private func tickMark(step: Int, center: CGPoint, ring: CGFloat) -> some View {
+        let fraction = Double(step) / Double(steps)
+        let radians = (fraction * 360 - 90) * Double.pi / 180
+        let active = fraction <= value && value > 0
+        let style: AnyShapeStyle = active ? AnyShapeStyle(accent) : AnyShapeStyle(.primary.opacity(0.2))
+        return Circle()
+            .fill(style)
+            .frame(width: 3.5, height: 3.5)
+            .position(
+                x: center.x + CGFloat(cos(radians)) * ring,
+                y: center.y + CGFloat(sin(radians)) * ring
+            )
+    }
+
+    private func face(size: CGFloat, center: CGPoint) -> some View {
+        Circle()
+            .fill(.background)
+            .overlay {
+                Image(nsImage: NoiseTexture.image)
+                    .resizable(resizingMode: .tile)
+                    .opacity(0.25 + value * 0.75)
+                    .clipShape(Circle())
+            }
+            .overlay(Circle().strokeBorder(.primary.opacity(0.12), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.15), radius: 2, y: 1)
+            .frame(width: size - 16, height: size - 16)
+            .position(center)
+    }
+
+    private func knob(size: CGFloat, center: CGPoint) -> some View {
+        let radians = (value * 360 - 90) * Double.pi / 180
+        let orbit = size / 2 - 14
+        return Capsule()
+            .fill(.primary.opacity(0.7))
+            .frame(width: 2.5, height: 7)
+            .rotationEffect(.radians(radians + .pi / 2))
+            .position(
+                x: center.x + CGFloat(cos(radians)) * orbit,
+                y: center.y + CGFloat(sin(radians)) * orbit
+            )
+    }
+
+    private func dragGesture(center: CGPoint) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { drag in
+                var degrees = angleDegrees(dy: drag.location.y - center.y, dx: drag.location.x - center.x) + 90
+                if degrees < 0 { degrees += 360 }
+                var snapped = (degrees / 360 * Double(steps)).rounded() / Double(steps)
+                if snapped >= 1 { snapped = 0 }
+                if snapped != value {
+                    NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+                    onChange(snapped)
+                }
+            }
+    }
+}
+
+private func angleDegrees(dy: CGFloat, dx: CGFloat) -> Double {
+    Double(atan2(dy, dx)) * 180 / .pi
 }
