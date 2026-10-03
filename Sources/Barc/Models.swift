@@ -6,9 +6,11 @@ struct TabRecord: Codable, Identifiable, Equatable {
     var url: URL?
     var title: String
     var homeURL: URL?
+    var homeTitle: String?
     var lastActive = Date()
 
     var displayTitle: String {
+        if homeURL != nil, let homeTitle, !homeTitle.isEmpty { return homeTitle }
         if !title.isEmpty { return title }
         return url?.host() ?? "New Tab"
     }

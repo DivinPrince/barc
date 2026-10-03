@@ -1,0 +1,82 @@
+name: Build and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Test and package macOS
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 16.4
+        run: sudo xcode-select --switch /Applications/Xcode_16.4.app/Contents/Developer
+      - name: Set release version
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
+            echo 'Release tags must have the form vX.Y.Z-beta.N' >&2
+            exit 1
+          fi
+          echo "VERSION=${RELEASE_TAG#v}" >> "$GITHUB_ENV"
+      - name: Run tests
+        run: swift test
+      - name: Build universal DMG
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./scripts/package-dmg.sh
+      - name: Upload DMG and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: Barc-macOS-universal
+          path: |
+            dist/*.dmg
+            dist/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Barc-macOS-universal
+          path: dist
+      - name: Publish DMG and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          cat > release-notes.md <<'EOF'
+          This is a beta prerelease. Download the universal DMG below, open it, and drag Barc into Applications.
+          Requires macOS 15.4 or later; supports Apple Silicon and Intel Macs.
+
+          Barc is ad-hoc signed and is not Apple-notarized. macOS may block the first launch. If you trust this download, use System Settings → Privacy & Security → Open Anyway after attempting to open it.
+          EOF
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* --verify-tag \
+              --title "Barc $RELEASE_TAG" --prerelease --latest=false --generate-notes --notes-file release-notes.md
+          fi

@@ -31,6 +31,10 @@ Checked to load and inject into pages: Proton Pass, Dark Reader, Grammarly, and 
 
 ## Build and run
 
+Beta DMGs will be available on the [GitHub Releases page](https://github.com/DivinPrince/barc/releases). Download `Barc-X.Y.Z-beta.N-universal.dmg`, open it, and drag Barc into Applications. The universal app supports Apple Silicon and Intel Macs running macOS 15.4 or later.
+
+The app is ad-hoc signed, not Apple-notarized. If macOS blocks the first launch and you trust the download, attempt to open the app, then choose **Open Anyway** in **System Settings → Privacy & Security**.
+
 ```sh
 ./build.sh
 ```
@@ -45,6 +49,29 @@ swift test
 ```
 
 Set `BARC_DATA_DIR=/some/folder` to run with a separate profile (library, history, and extensions) instead of `~/Library/Application Support/Barc`.
+
+## DMG builds and releases
+
+Build a universal DMG locally without installing the app:
+
+```sh
+./scripts/package-dmg.sh
+# Override the bundle and DMG version:
+VERSION=0.2.0-beta.1 BUILD_NUMBER=2 ./scripts/package-dmg.sh
+```
+
+The script produces `dist/Barc-X.Y.Z-beta.N-universal.dmg` and its `.sha256` checksum. It compiles both architectures, verifies the app signature, and packages an Applications shortcut for drag-and-drop installation. `VERSION` defaults to the version in `Resources/Info.plist` with `-beta.1` appended. The app bundle uses the numeric `X.Y.Z` version required by macOS; the DMG and release retain the beta label.
+
+The **Build and release** GitHub Actions workflow runs tests and uploads the DMG and checksum as the **Barc-macOS-universal** artifact on pull requests, pushes to `main`, and manual runs. Download these from the workflow run's **Artifacts** section (requires signing in to GitHub; retained for 14 days).
+
+To publish a release after the workflow has been merged, tag the desired commit and push the tag:
+
+```sh
+git tag v0.1.0-beta.1
+git push origin v0.1.0-beta.1
+```
+
+Tags must use `vX.Y.Z-beta.N` while Barc is in beta. The workflow sets the app version from the tag, runs tests, builds the DMG, and publishes a GitHub prerelease (never marked as the latest stable release) with the DMG, checksum, and generated release notes. The build number comes from the Actions run number. No extra secrets are needed: publishing uses GitHub's automatic `GITHUB_TOKEN`. Manual runs on branches produce artifacts without publishing a release.
 
 ## Keyboard shortcuts
 

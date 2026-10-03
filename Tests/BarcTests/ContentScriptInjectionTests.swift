@@ -14,6 +14,27 @@ final class ContentScriptInjectionTests: XCTestCase {
         root = nil
     }
 
+    private func waitForServer(port: Int) async throws {
+        let url = URL(string: "http://127.0.0.1:\(port)/index.html")!
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        for _ in 0..<100 {
+            guard server?.isRunning == true else {
+                throw NSError(domain: "BarcTests.HTTPServer", code: 1,
+                              userInfo: [NSLocalizedDescriptionKey: "Local test server exited before becoming ready"])
+            }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 0.2
+            if let (_, response) = try? await session.data(for: request),
+               (response as? HTTPURLResponse)?.statusCode == 200 {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw NSError(domain: "BarcTests.HTTPServer", code: 2,
+                      userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for local test server"])
+    }
+
     func testContentScriptMarksPasswordField() async throws {
         let port = 18765
         let directory = FileManager.default.temporaryDirectory.appending(path: "barc-probe-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -42,6 +63,7 @@ final class ContentScriptInjectionTests: XCTestCase {
         http.currentDirectoryURL = directory
         try http.run()
         server = http
+        try await waitForServer(port: port)
 
         let shared = WKWebViewConfiguration()
         shared.websiteDataStore = .default()
@@ -209,6 +231,7 @@ final class ContentScriptInjectionTests: XCTestCase {
         http.currentDirectoryURL = directory
         try http.run()
         server = http
+        try await waitForServer(port: port)
 
         let shared = WKWebViewConfiguration()
         shared.websiteDataStore = .default()
@@ -306,6 +329,7 @@ final class ContentScriptInjectionTests: XCTestCase {
         http.currentDirectoryURL = directory
         try http.run()
         server = http
+        try await waitForServer(port: port)
 
         let shared = WKWebViewConfiguration()
         let controllerConfiguration = WKWebExtensionController.Configuration(identifier: UUID())
@@ -380,6 +404,7 @@ final class ContentScriptInjectionTests: XCTestCase {
         http.currentDirectoryURL = directory
         try http.run()
         server = http
+        try await waitForServer(port: port)
 
         let shared = WKWebViewConfiguration()
         let controllerConfiguration = WKWebExtensionController.Configuration(identifier: UUID())

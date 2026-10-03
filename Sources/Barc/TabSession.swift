@@ -24,7 +24,33 @@ final class TabSession: NSObject {
     @ObservationIgnored private var savedState: Any?
     @ObservationIgnored private var pendingURL: URL?
 
-    static let userAgentSuffix = "Version/19.0 Safari/605.1.15"
+    // Slack blocks Safari versions below 26. Report the installed Safari version.
+    // WebKit still freezes the Safari token at 605.1.15.
+    static let userAgentSuffix: String = {
+        let version = installedSafariVersion() ?? fallbackSafariVersion()
+        return "Version/\(version) Safari/605.1.15"
+    }()
+
+    private static func installedSafariVersion() -> String? {
+        let candidates = [
+            "/Applications/Safari.app",
+            "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app",
+        ]
+        for path in candidates {
+            guard let raw = Bundle(path: path)?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else { continue }
+            let parts = raw.split(separator: ".")
+            guard let major = parts.first, let majorNumber = Int(major), majorNumber > 0 else { continue }
+            let minor = parts.count > 1 ? parts[1] : "0"
+            return "\(major).\(minor)"
+        }
+        return nil
+    }
+
+    private static func fallbackSafariVersion() -> String {
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        if os.majorVersion >= 26 { return "\(os.majorVersion).\(os.minorVersion)" }
+        return "26.0"
+    }
 
     init(id: UUID, url: URL?, dataStore: WKWebsiteDataStore) {
         self.id = id

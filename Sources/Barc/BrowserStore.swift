@@ -237,6 +237,7 @@ final class BrowserStore {
         let record = TabRecord(url: url, title: url.host() ?? "")
         library.tabs[record.id] = record
         insert(record.id, at: destination ?? .today(space: currentSpace.id), index: index)
+        if isPinned(record.id) { setHome(record.id) }
         if background {
             session(record.id).activate()
             liveOrder.insert(record.id, at: min(1, liveOrder.count))
@@ -291,7 +292,14 @@ final class BrowserStore {
             sessions[id] = nil
             if let liveFolder { forgetLiveTab(id, in: liveFolder) }
         } else {
-            sessions[id]?.unload()
+            if let home = library.tabs[id]?.homeURL {
+                sessions[id]?.resetHistory(to: home)
+                let title = library.tabs[id]?.homeTitle ?? home.host() ?? ""
+                library.tabs[id]?.url = home
+                library.tabs[id]?.title = title
+            } else {
+                sessions[id]?.unload()
+            }
         }
         liveOrder.removeAll { $0 == id }
         if wasSelected {
@@ -370,7 +378,7 @@ final class BrowserStore {
             move(.tab(id), to: .today(space: space), index: 0)
             showToast("Removed from Favorites", symbol: "star.slash")
         } else {
-            setHome(id)
+            if library.tabs[id]?.homeURL == nil { setHome(id) }
             move(.tab(id), to: .favorites(space: space(of: id)?.id ?? currentSpace.id), index: Int.max)
             showToast("Added to Favorites", symbol: "star.fill")
         }
@@ -431,6 +439,9 @@ final class BrowserStore {
         guard record.url != url || record.title != newTitle else { return }
         record.url = url
         record.title = newTitle
+        if let home = record.homeURL, url == home, !title.isEmpty {
+            record.homeTitle = title
+        }
         library.tabs[id] = record
         if let url, let scheme = url.scheme, scheme.hasPrefix("http") {
             let key = url.absoluteString
@@ -480,6 +491,7 @@ final class BrowserStore {
                 insert(id, at: destination, index: adjusted)
                 if case .today = destination {
                     library.tabs[id]?.homeURL = nil
+                    library.tabs[id]?.homeTitle = nil
                 } else if library.tabs[id]?.homeURL == nil {
                     setHome(id)
                 }
@@ -516,8 +528,10 @@ final class BrowserStore {
     }
 
     private func setHome(_ id: UUID) {
-        guard let url = library.tabs[id]?.url else { return }
-        library.tabs[id]?.homeURL = url
+        guard var record = library.tabs[id], let url = record.url else { return }
+        record.homeURL = url
+        record.homeTitle = record.title
+        library.tabs[id] = record
     }
 
     private func detach(_ id: UUID) {
@@ -631,7 +645,7 @@ final class BrowserStore {
             if let tab {
                 detach(tab)
                 insert(tab, at: .folder(space: currentSpace.id, folder: folder.id), index: 0)
-                if library.tabs[tab]?.homeURL == nil { library.tabs[tab]?.homeURL = library.tabs[tab]?.url }
+                if library.tabs[tab]?.homeURL == nil { setHome(tab) }
             }
         }
         editingFolder = folder.id
@@ -880,6 +894,16 @@ final class BrowserStore {
         }
         if library.selectedSpace == nil || !library.spaces.contains(where: { $0.id == library.selectedSpace }) {
             library.selectedSpace = library.spaces.first?.id
+        }
+        for id in Array(library.tabs.keys) where isPinned(id) {
+            guard var record = library.tabs[id] else { continue }
+            if record.homeURL == nil { record.homeURL = record.url }
+            if record.homeTitle == nil {
+                record.homeTitle = record.url == record.homeURL ? record.title : record.homeURL?.host()
+            }
+            record.url = record.homeURL
+            record.title = record.homeTitle ?? ""
+            library.tabs[id] = record
         }
         if let data = try? Data(contentsOf: Self.historyURL), let entries = try? decoder.decode([HistoryEntry].self, from: data) {
             history = Dictionary(entries.map { ($0.url.absoluteString, $0) }, uniquingKeysWith: { a, _ in a })

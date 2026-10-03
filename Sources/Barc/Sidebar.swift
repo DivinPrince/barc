@@ -199,9 +199,9 @@ struct FavoriteTile: View {
         let selected = store.selectedTabID == id
         let live = store.isLive(id)
         let dark = store.isDark
-        let glow = selected ? FaviconStore.shared.glowColors(for: record?.url ?? record?.homeURL) : nil
+        let glow = selected ? FaviconStore.shared.glowColors(for: record?.homeURL ?? record?.url) : nil
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-        FaviconView(url: record?.url ?? record?.homeURL, size: 17)
+        FaviconView(url: record?.homeURL ?? record?.url, size: 17)
             .frame(maxWidth: .infinity)
             .frame(height: 34)
             .background {
@@ -396,7 +396,7 @@ struct TabRow: View {
         let dark = store.isDark
         let asleep = pinned && !live && !selected
         HStack(spacing: 8) {
-            FaviconView(url: record?.url ?? record?.homeURL, size: 15)
+            FaviconView(url: record?.homeURL ?? record?.url, size: 15)
                 .saturation(asleep ? 0.2 : 1)
                 .opacity(asleep ? 0.55 : 1)
             Text(record?.displayTitle ?? "")
