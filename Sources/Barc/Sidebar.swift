@@ -30,6 +30,7 @@ struct SidebarView: View {
         .contextMenu {
             Button("New Tab") { store.commandBar = .newTab }.keyboardShortcut("t")
             Button("New Folder") { store.newFolder() }
+            Button("New Live Folder…") { store.beginCreatingLiveFolder() }
             Button("New Space") { store.beginCreatingSpace() }
             Divider()
             Button("Edit Theme…") { store.openThemeEditor(store.currentSpace.id) }
@@ -293,6 +294,7 @@ struct SpaceSection: View {
                 Button("Rename Space") { editing = true }
                 Button("New Tab") { store.commandBar = .newTab }
                 Button("New Folder") { store.newFolder() }
+                Button("New Live Folder…") { store.beginCreatingLiveFolder() }
                 Divider()
                 Button("Next Space") { store.switchSpace(offset: 1) }
                     .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
@@ -457,10 +459,15 @@ struct FolderView: View {
         let editing = store.editingFolder == folder.id
         VStack(alignment: .leading, spacing: 2) {
             HStack(spacing: 9) {
-                Image(systemName: folder.isExpanded ? "folder" : "folder.fill")
-                    .font(.system(size: 13, weight: .medium))
-                    .frame(width: 16)
-                    .foregroundStyle(.secondary)
+                if let live = folder.live {
+                    FaviconView(url: live.siteURL ?? live.url, size: 15)
+                        .frame(width: 16)
+                } else {
+                    Image(systemName: folder.isExpanded ? "folder" : "folder.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .frame(width: 16)
+                        .foregroundStyle(.secondary)
+                }
                 if editing {
                     TextField("Folder name", text: $name)
                         .textFieldStyle(.plain)
@@ -480,6 +487,25 @@ struct FolderView: View {
                         .lineLimit(1)
                 }
                 Spacer(minLength: 0)
+                if let live = folder.live, !editing {
+                    if store.refreshingFolders.contains(folder.id) {
+                        ProgressView().controlSize(.mini)
+                    } else if let error = live.error {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                            .help(error)
+                    }
+                    if live.unreadCount > 0 && !hovering {
+                        Text("\(live.unreadCount)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .frame(minWidth: 16, minHeight: 16)
+                            .background(store.palette.accent, in: Capsule())
+                            .padding(.trailing, 2)
+                    }
+                }
                 if hovering && !editing {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
@@ -513,9 +539,15 @@ struct FolderView: View {
             }
             .onDrop(of: ReorderDropDelegate.types, delegate: ReorderDropDelegate(
                 store: store, target: folder.id, destination: .pinned(space: spaceID),
-                intoFolder: .folder(space: spaceID, folder: folder.id), targeted: $targeted
+                intoFolder: folder.live == nil ? .folder(space: spaceID, folder: folder.id) : nil, targeted: $targeted
             ))
             .contextMenu {
+                if let live = folder.live {
+                    Button("Refresh") { Task { await store.refreshLiveFolder(folder.id) } }
+                    Button("Mark All as Read") { store.setLiveItemRead(nil, in: folder.id, read: true) }
+                        .disabled(live.unreadCount == 0)
+                    Divider()
+                }
                 Button("Rename") { store.editingFolder = folder.id }
                 Button(folder.isExpanded ? "Collapse" : "Expand") {
                     store.updateFolder(folder.id) { $0.isExpanded.toggle() }
@@ -524,7 +556,20 @@ struct FolderView: View {
                 Button("Delete Folder") { store.deleteFolder(folder.id) }
             }
 
-            if folder.isExpanded {
+            if folder.isExpanded, let live = folder.live {
+                ForEach(live.visibleItems) {
+                    LiveItemRow(item: $0, folderID: folder.id)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                if live.items.isEmpty {
+                    Text(live.error ?? (store.refreshingFolders.contains(folder.id) ? "Loading…" : "No posts yet"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                        .padding(.leading, 38)
+                        .frame(minHeight: 22)
+                }
+            } else if folder.isExpanded {
                 ForEach(Array(folder.tabs.enumerated()), id: \.element) { tabIndex, id in
                     TabRow(id: id, destination: .folder(space: spaceID, folder: folder.id), index: tabIndex, indent: 14)
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -793,6 +838,7 @@ struct SidebarFooter: View {
             Menu {
                 Button("New Space") { store.beginCreatingSpace() }
                 Button("New Folder") { store.newFolder() }
+                Button("New Live Folder…") { store.beginCreatingLiveFolder() }
                 Button("New Tab") { store.commandBar = .newTab }
             } label: {
                 Image(systemName: "plus")

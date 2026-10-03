@@ -5,6 +5,7 @@ Barc is a native macOS web browser built with SwiftUI and WebKit. It uses a vert
 ## Features
 
 - **Sidebar tabs.** Each space has favorites, pinned tabs, folders, and a "Today" list for short-lived tabs that you can clear in one go.
+- **Live folders.** A folder that follows a feed and shows its newest five posts with unread dots, refreshed every 15 minutes. Posts open as tabs inside the folder. GitHub presets cover a user's open pull requests and activity, or a repo's releases, commits (any branch), and tags. Any other RSS or Atom feed works too: paste its address, or a website's address and Barc finds the feed (File → New Live Folder…).
 - **Spaces.** Every space has its own name, icon, and theme. A space can share browsing data with the others or keep its own cookies and storage.
 - **Command bar.** Open a URL, search, or jump to a tab or history entry from one field (`⌘T` / `⌘L`).
 - **Themes.** Per-space gradient themes with color harmonies, presets, grain, and light/dark/auto modes.
@@ -73,6 +74,7 @@ Sources/Barc/
   BrowserStore.swift    Library, spaces, tabs, history, persistence
   BrowserView.swift     Main window and top bar
   Sidebar.swift         Sidebar, favorites, pinned tabs, folders
+  LiveFolders.swift     RSS/Atom live folders, feed parsing, GitHub presets
   CommandBar.swift      URL and search command bar
   TabSession.swift      WKWebView lifecycle per tab
   Extensions.swift      Extension install, Chrome compatibility, popups, settings

@@ -30,6 +30,8 @@ final class BrowserStore {
     var spaceTransitionEdge: Edge = .trailing
     var themeEditorSpace: UUID?
     var creatingSpace = false
+    var creatingLiveFolder = false
+    var refreshingFolders: Set<UUID> = []
     var draggingTab: UUID?
     var draggingFolder: UUID?
     var toast: Toast?
@@ -41,6 +43,7 @@ final class BrowserStore {
     @ObservationIgnored private var closedStack: [(TabRecord, Destination)] = []
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var dragWatch: Timer?
+    @ObservationIgnored private var liveRefreshTimer: Timer?
     @ObservationIgnored weak var window: NSWindow? {
         didSet {
             updateTrafficLights()
@@ -73,6 +76,10 @@ final class BrowserStore {
 
     init() {
         load()
+        refreshLiveFolders(olderThan: Self.liveRefreshInterval)
+        liveRefreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshLiveFolders(olderThan: Self.liveRefreshInterval) }
+        }
         DistributedNotificationCenter.default().addObserver(
             forName: Notification.Name("AppleInterfaceThemeChangedNotification"), object: nil, queue: .main
         ) { [weak self] _ in
@@ -196,7 +203,7 @@ final class BrowserStore {
     }
 
     var folders: [Folder] {
-        currentSpace.pinned.compactMap { if case .folder(let f) = $0 { f } else { nil } }
+        currentSpace.pinned.compactMap { if case .folder(let f) = $0, f.live == nil { f } else { nil } }
     }
 
     // MARK: - Tabs
@@ -268,14 +275,21 @@ final class BrowserStore {
         guard let dest = location(of: id) else { return }
         let wasSelected = selectedTabID == id
         let order = navigableTabs
+        var liveFolder: UUID?
+        if case .folder(_, let folder) = dest, liveFeed(folder) != nil { liveFolder = folder }
+        var removes = liveFolder != nil
         if case .today = dest {
+            removes = true
             if let record = library.tabs[id] { closedStack.append((record, dest)) }
             if closedStack.count > 30 { closedStack.removeFirst() }
+        }
+        if removes {
             if let session = sessions[id] { ExtensionManager.shared.tabClosed(session) }
             detach(id)
             library.tabs[id] = nil
             sessions[id]?.unload()
             sessions[id] = nil
+            if let liveFolder { forgetLiveTab(id, in: liveFolder) }
         } else {
             sessions[id]?.unload()
         }
@@ -459,6 +473,7 @@ final class BrowserStore {
             switch item {
             case .tab(let id):
                 guard library.tabs[id] != nil else { return }
+                if case .folder(_, let folderID) = destination, liveFeed(folderID) != nil { return }
                 let original = location(of: id)
                 let adjusted = adjustedIndex(for: id, from: original, to: destination, index: index)
                 detach(id)
@@ -640,9 +655,12 @@ final class BrowserStore {
     func deleteFolder(_ id: UUID) {
         guard let p = currentSpace.pinned.firstIndex(where: { $0.id == id }),
               case .folder(let folder) = currentSpace.pinned[p] else { return }
+        if folder.live != nil { folder.tabs.forEach(close) }
         withAnimation(.snappy(duration: 0.25)) {
             library.spaces[spaceIndex].pinned.remove(at: p)
-            library.spaces[spaceIndex].pinned.insert(contentsOf: folder.tabs.map { .tab($0) }, at: p)
+            if folder.live == nil {
+                library.spaces[spaceIndex].pinned.insert(contentsOf: folder.tabs.map { .tab($0) }, at: p)
+            }
         }
         scheduleSave()
     }

@@ -65,9 +65,16 @@ struct BrowserView: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
                     .zIndex(4)
             }
+
+            if store.creatingLiveFolder {
+                LiveFolderSheet()
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+                    .zIndex(4)
+            }
         }
         .animation(.snappy(duration: 0.18), value: store.commandBar)
         .animation(.snappy(duration: 0.22), value: store.creatingSpace)
+        .animation(.snappy(duration: 0.22), value: store.creatingLiveFolder)
         .background(WindowAccessor(store: store))
         .onAppear { store.openSettingsAction = { openSettings() } }
         .ignoresSafeArea()
